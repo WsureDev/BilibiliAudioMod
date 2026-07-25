@@ -16,6 +16,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 /**
  * B 站音频流处理核心逻辑，不依赖 NetMusic 的接口。
@@ -46,46 +47,68 @@ public final class BiliStreamCore {
     }
 
     public static AudioInputStream handle(URL url) throws UnsupportedAudioFileException, IOException {
+        return handle(java.util.Collections.singletonList(url));
+    }
+
+    /**
+     * 多 CDN 节点尝试：按顺序连接，5 秒内连不上或读不到数据就切下一个节点。
+     */
+    public static AudioInputStream handle(List<URL> urls) throws UnsupportedAudioFileException, IOException {
         AudioFileReader jaad = findJaadReader();
+        UnsupportedAudioFileException lastUafe = null;
+        IOException lastIoe = null;
 
-        // 主路径：流式解码，边下载边播放，首帧延迟最小
-        if (jaad != null) {
+        for (int i = 0; i < urls.size(); i++) {
+            URL url = urls.get(i);
+            BiliConfig.LOGGER.info("尝试 CDN 节点 {}/{}: {}", i + 1, urls.size(), url.getHost());
             try {
-                BufferedInputStream bis = openBuffered(url);
-                AudioInputStream in = jaad.getAudioInputStream(bis);
-                BiliConfig.LOGGER.info("jaad 流式解码就绪: {} Hz, {} bit, {} ch for {}",
-                        (int) in.getFormat().getSampleRate(), in.getFormat().getSampleSizeInBits(),
-                        in.getFormat().getChannels(), url.getHost());
-                return in;
-            } catch (UnsupportedAudioFileException | IOException e) {
-                BiliConfig.LOGGER.warn("jaad 流式解码失败 {}，回退全量下载: {}", url.getHost(), e.toString());
-            }
-        }
-
-        // fallback：全量下载到临时文件再解码（jaad 流式失败或无 jaad 时）
-        if (jaad != null) {
-            File tempFile = downloadToTemp(url);
-            try {
-                AudioInputStream in = jaad.getAudioInputStream(tempFile);
-                BiliConfig.LOGGER.info("jaad 全量解码就绪: {} Hz, {} bit, {} ch for {}",
-                        (int) in.getFormat().getSampleRate(), in.getFormat().getSampleSizeInBits(),
-                        in.getFormat().getChannels(), url.getHost());
-                final File tf = tempFile;
-                return new AudioInputStream(wrapSafe(in), in.getFormat(), in.getFrameLength()) {
-                    @Override
-                    public void close() throws IOException {
-                        super.close();
-                        deleteTempQuietly(tf);
+                // 主路径：流式解码
+                if (jaad != null) {
+                    try {
+                        BufferedInputStream bis = openBuffered(url);
+                        AudioInputStream in = jaad.getAudioInputStream(bis);
+                        BiliConfig.LOGGER.info("jaad 流式解码就绪: {} Hz, {} bit, {} ch for {}",
+                                (int) in.getFormat().getSampleRate(), in.getFormat().getSampleSizeInBits(),
+                                in.getFormat().getChannels(), url.getHost());
+                        return in;
+                    } catch (UnsupportedAudioFileException | IOException e) {
+                        BiliConfig.LOGGER.warn("jaad 流式失败 {}: {}", url.getHost(), e.toString());
+                        lastUafe = e instanceof UnsupportedAudioFileException ? (UnsupportedAudioFileException) e : lastUafe;
+                        lastIoe = e instanceof IOException ? (IOException) e : lastIoe;
                     }
-                };
-            } catch (UnsupportedAudioFileException | IOException e) {
-                BiliConfig.LOGGER.warn("jaad 全量解码也失败 {}，回退 AudioSystem: {}", url.getHost(), e.toString());
-                deleteTempQuietly(tempFile);
+                }
+                // fallback：全量下载
+                if (jaad != null) {
+                    try {
+                        File tempFile = downloadToTemp(url);
+                        AudioInputStream in = jaad.getAudioInputStream(tempFile);
+                        BiliConfig.LOGGER.info("jaad 全量解码就绪: {} Hz, {} bit, {} ch for {}",
+                                (int) in.getFormat().getSampleRate(), in.getFormat().getSampleSizeInBits(),
+                                in.getFormat().getChannels(), url.getHost());
+                        final File tf = tempFile;
+                        return new AudioInputStream(wrapSafe(in), in.getFormat(), in.getFrameLength()) {
+                            @Override
+                            public void close() throws IOException {
+                                super.close();
+                                deleteTempQuietly(tf);
+                            }
+                        };
+                    } catch (UnsupportedAudioFileException | IOException e) {
+                        BiliConfig.LOGGER.warn("jaad 全量也失败 {}: {}", url.getHost(), e.toString());
+                        lastUafe = e instanceof UnsupportedAudioFileException ? (UnsupportedAudioFileException) e : lastUafe;
+                        lastIoe = e instanceof IOException ? (IOException) e : lastIoe;
+                    }
+                }
+            } catch (Exception e) {
+                BiliConfig.LOGGER.warn("CDN 节点 {} 不可用: {}", url.getHost(), e.toString());
+                lastIoe = e instanceof IOException ? (IOException) e : new IOException(e);
             }
         }
 
-        // 最终 fallback：AudioSystem 流式
-        return decodeStream(openBuffered(url), url);
+        // 所有节点都失败
+        if (lastUafe != null) throw lastUafe;
+        if (lastIoe != null) throw lastIoe;
+        throw new IOException("所有 CDN 节点均不可用");
     }
 
     private static File downloadToTemp(URL url) throws IOException {
@@ -126,8 +149,8 @@ public final class BiliStreamCore {
         conn.setRequestProperty("User-Agent", BiliConfig.USER_AGENT);
         conn.setRequestProperty("Referer", BiliConfig.BILI_REFERER);
         conn.setRequestProperty("Range", "bytes=0-");
-        conn.setConnectTimeout(15000);
-        conn.setReadTimeout(30000);
+        conn.setConnectTimeout(5000);
+        conn.setReadTimeout(10000);
         InputStream raw = conn.getInputStream();
         BiliConfig.LOGGER.info("音频 CDN 连接: HTTP {} (Content-Length={}) for {}",
                 conn.getResponseCode(), conn.getContentLength(), url.getHost());

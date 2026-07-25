@@ -3,6 +3,7 @@ package com.github.wsure.bilibiliaudio.adapter.v118;
 import com.github.tartaricacid.netmusic.client.audio.NetMusicSound;
 import com.github.wsure.bilibiliaudio.client.BiliAudioStreamAdapter;
 import com.github.wsure.bilibiliaudio.client.BiliStreamCore;
+import com.github.wsure.bilibiliaudio.client.CdnUrlCache;
 import com.github.wsure.bilibiliaudio.compat.NetMusicCompat;
 import com.github.wsure.bilibiliaudio.config.BiliConfig;
 import net.minecraft.Util;
@@ -45,7 +46,9 @@ public class NetMusicSoundMixin {
         BiliConfig.LOGGER.info("[兼容] 拦截 NetMusicSound.getStream，用 BiliStreamCore 打开: {}", songUrl.getHost());
         cir.setReturnValue(CompletableFuture.supplyAsync(() -> {
             try {
-                javax.sound.sampled.AudioInputStream jaadStream = BiliStreamCore.handle(songUrl);
+                java.util.List<java.net.URL> urls = CdnUrlCache.get(songUrl.toString());
+                if (urls.isEmpty()) urls = java.util.Collections.singletonList(songUrl);
+                javax.sound.sampled.AudioInputStream jaadStream = BiliStreamCore.handle(urls);
                 return (AudioStream) new BiliAudioStreamAdapter(jaadStream);
             } catch (Exception e) {
                 BiliConfig.LOGGER.error("[兼容] BiliStreamCore 打开流失败", e);

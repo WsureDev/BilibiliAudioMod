@@ -317,10 +317,8 @@ public final class BiliClient {
         return obj.getAsJsonObject("data");
     }
 
-    private String getAudioUrl(String bvid, long cid) throws IOException, InterruptedException {
+    private String[] getAudioUrlWithBackup(String bvid, long cid) throws IOException, InterruptedException {
         ensureWbiKeys();
-        // 用 fnval=0 请求渐进式 MP4(durl)：经典(非分片)MP4，jaad 可解码其音频轨。
-        // DASH(fnval=4048) 的 .m4s 是 fragmented MP4(moof+trun)，jaad 0.9.6 读不到样本(no valid frame)。
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("bvid", bvid);
         params.put("cid", cid);
@@ -340,8 +338,18 @@ public final class BiliClient {
                 ? obj.getAsJsonObject("data") : new JsonObject();
         if (data.has("durl") && data.get("durl").isJsonArray() && data.getAsJsonArray("durl").size() > 0) {
             JsonObject first = data.getAsJsonArray("durl").get(0).getAsJsonObject();
-            if (first.has("url") && !first.get("url").isJsonNull()) {
-                return first.get("url").getAsString();
+            String mainUrl = first.has("url") && !first.get("url").isJsonNull() ? first.get("url").getAsString() : null;
+            java.util.List<String> backups = new java.util.ArrayList<>();
+            if (first.has("backup_url") && first.get("backup_url").isJsonArray()) {
+                first.getAsJsonArray("backup_url").forEach(e -> {
+                    if (!e.isJsonNull() && !e.getAsString().isEmpty()) {
+                        backups.add(e.getAsString());
+                    }
+                });
+            }
+            if (mainUrl != null) {
+                backups.add(0, mainUrl);
+                return backups.toArray(new String[0]);
             }
         }
         throw new IOException("playurl 未返回 durl(渐进式 MP4): " + data);
@@ -377,8 +385,10 @@ public final class BiliClient {
         if (cid == 0) {
             throw new IOException("视频 " + bvid + " 缺少 cid");
         }
-        String audioUrl = getAudioUrl(bvid, cid);
-        return new BiliVideoInfo(bvid, title, duration, audioUrl);
+        String[] urls = getAudioUrlWithBackup(bvid, cid);
+        BiliConfig.LOGGER.info("playurl 返回 {} 个 CDN 节点 for {}", urls.length, bvid);
+        return new BiliVideoInfo(bvid, title, duration, urls[0],
+                urls.length > 1 ? java.util.Arrays.asList(java.util.Arrays.copyOfRange(urls, 1, urls.length)) : java.util.Collections.emptyList());
     }
 
     // ── cookie 手动设置（供配置页使用）────────────────────────────────────

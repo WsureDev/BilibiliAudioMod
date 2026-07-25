@@ -3,6 +3,7 @@ package com.github.wsure.bilibiliaudio.resolver;
 import com.github.tartaricacid.netmusic.item.ItemMusicCD;
 import com.github.wsure.bilibiliaudio.api.BiliClient;
 import com.github.wsure.bilibiliaudio.api.BiliVideoInfo;
+import com.github.wsure.bilibiliaudio.client.CdnUrlCache;
 import com.github.wsure.bilibiliaudio.config.BiliConfig;
 import net.minecraft.Util;
 
@@ -42,9 +43,10 @@ public final class BiliResolveCore {
                 if (info.getDurationSec() > 0) {
                     songInfo.songTime = info.getDurationSec();
                 }
-                BiliConfig.LOGGER.info("已解析 B 站音频: {} [{}] -> {}", bvid,
+                CdnUrlCache.put(info.getAudioUrl(), info.getBackupAudioUrls());
+                BiliConfig.LOGGER.info("已解析 B 站音频: {} [{}] -> {} ({} 个 CDN 节点)", bvid,
                         BiliClient.getInstance().isLogin() ? "登录态" : "匿名 try_look",
-                        info.getAudioUrl());
+                        info.getAudioUrl(), 1 + info.getBackupAudioUrls().size());
                 return songInfo;
             } catch (Throwable t) {
                 BiliConfig.LOGGER.error("解析 B 站音频 {} 失败", bvid, t);
