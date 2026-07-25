@@ -16,6 +16,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -51,28 +52,41 @@ public final class BiliStreamCore {
     }
 
     /**
-     * 多 CDN 节点尝试：按顺序连接，5 秒内连不上或读不到数据就切下一个节点。
+     * 多 CDN 节点尝试：
+     * 1. 去重同域名节点（同 host:port 只保留第一个 URL）
+     * 2. CdnRanker 按历史耗时自适应排序
+     * 3. 按排序顺序逐个尝试，记录每个域名的成功/失败耗时
      */
     public static AudioInputStream handle(List<URL> urls) throws UnsupportedAudioFileException, IOException {
+        // 去重同域名
+        List<URL> deduped = dedupByHost(urls);
+        // 自适应排序
+        List<URL> sorted = CdnRanker.sort(deduped);
+
         AudioFileReader jaad = findJaadReader();
         UnsupportedAudioFileException lastUafe = null;
         IOException lastIoe = null;
 
-        for (int i = 0; i < urls.size(); i++) {
-            URL url = urls.get(i);
-            BiliConfig.LOGGER.info("尝试 CDN 节点 {}/{}: {}", i + 1, urls.size(), url.getHost());
+        for (int i = 0; i < sorted.size(); i++) {
+            URL url = sorted.get(i);
+            String nodeKey = nodeKey(url);
+            BiliConfig.LOGGER.info("尝试 CDN 节点 {}/{}: {} (排名分: {}ms)", i + 1, sorted.size(),
+                    nodeKey, CdnRanker.scoreOf(nodeKey));
+            long start = System.currentTimeMillis();
             try {
                 // 主路径：流式解码
                 if (jaad != null) {
                     try {
                         BufferedInputStream bis = openBuffered(url);
                         AudioInputStream in = jaad.getAudioInputStream(bis);
-                        BiliConfig.LOGGER.info("jaad 流式解码就绪: {} Hz, {} bit, {} ch for {}",
+                        long elapsed = System.currentTimeMillis() - start;
+                        CdnRanker.recordSuccess(nodeKey, elapsed);
+                        BiliConfig.LOGGER.info("jaad 流式解码就绪: {} Hz, {} bit, {} ch for {} ({}ms)",
                                 (int) in.getFormat().getSampleRate(), in.getFormat().getSampleSizeInBits(),
-                                in.getFormat().getChannels(), url.getHost());
+                                in.getFormat().getChannels(), nodeKey, elapsed);
                         return in;
                     } catch (UnsupportedAudioFileException | IOException e) {
-                        BiliConfig.LOGGER.warn("jaad 流式失败 {}: {}", url.getHost(), e.toString());
+                        BiliConfig.LOGGER.warn("jaad 流式失败 {}: {}", nodeKey, e.toString());
                         lastUafe = e instanceof UnsupportedAudioFileException ? (UnsupportedAudioFileException) e : lastUafe;
                         lastIoe = e instanceof IOException ? (IOException) e : lastIoe;
                     }
@@ -82,9 +96,11 @@ public final class BiliStreamCore {
                     try {
                         File tempFile = downloadToTemp(url);
                         AudioInputStream in = jaad.getAudioInputStream(tempFile);
-                        BiliConfig.LOGGER.info("jaad 全量解码就绪: {} Hz, {} bit, {} ch for {}",
+                        long elapsed = System.currentTimeMillis() - start;
+                        CdnRanker.recordSuccess(nodeKey, elapsed);
+                        BiliConfig.LOGGER.info("jaad 全量解码就绪: {} Hz, {} bit, {} ch for {} ({}ms)",
                                 (int) in.getFormat().getSampleRate(), in.getFormat().getSampleSizeInBits(),
-                                in.getFormat().getChannels(), url.getHost());
+                                in.getFormat().getChannels(), nodeKey, elapsed);
                         final File tf = tempFile;
                         return new AudioInputStream(wrapSafe(in), in.getFormat(), in.getFrameLength()) {
                             @Override
@@ -94,21 +110,46 @@ public final class BiliStreamCore {
                             }
                         };
                     } catch (UnsupportedAudioFileException | IOException e) {
-                        BiliConfig.LOGGER.warn("jaad 全量也失败 {}: {}", url.getHost(), e.toString());
+                        BiliConfig.LOGGER.warn("jaad 全量也失败 {}: {}", nodeKey, e.toString());
                         lastUafe = e instanceof UnsupportedAudioFileException ? (UnsupportedAudioFileException) e : lastUafe;
                         lastIoe = e instanceof IOException ? (IOException) e : lastIoe;
                     }
                 }
             } catch (Exception e) {
-                BiliConfig.LOGGER.warn("CDN 节点 {} 不可用: {}", url.getHost(), e.toString());
+                BiliConfig.LOGGER.warn("CDN 节点 {} 不可用: {}", nodeKey, e.toString());
                 lastIoe = e instanceof IOException ? (IOException) e : new IOException(e);
             }
+            // 走到这里说明这个节点失败了
+            CdnRanker.recordFailure(nodeKey);
         }
 
         // 所有节点都失败
         if (lastUafe != null) throw lastUafe;
         if (lastIoe != null) throw lastIoe;
         throw new IOException("所有 CDN 节点均不可用");
+    }
+
+    /**
+     * 按 host:port 去重，同域名的只保留第一个 URL。
+     */
+    private static List<URL> dedupByHost(List<URL> urls) {
+        List<URL> result = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (URL u : urls) {
+            String key = nodeKey(u);
+            if (seen.add(key)) {
+                result.add(u);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 节点唯一标识：host:port（port 为 -1 时省略）。
+     */
+    private static String nodeKey(URL url) {
+        int port = url.getPort();
+        return port == -1 ? url.getHost() : url.getHost() + ":" + port;
     }
 
     private static File downloadToTemp(URL url) throws IOException {
