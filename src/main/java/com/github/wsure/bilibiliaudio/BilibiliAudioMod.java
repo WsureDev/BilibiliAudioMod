@@ -1,11 +1,11 @@
 package com.github.wsure.bilibiliaudio;
 
-import com.github.wsure.bilibiliaudio.client.BiliAudioStreamHandlerV15;
+import com.github.wsure.bilibiliaudio.adapter.v15.BiliAudioStreamHandlerV15;
 import com.github.wsure.bilibiliaudio.client.BiliLoginScreen;
 import com.github.wsure.bilibiliaudio.command.ModCommands;
 import com.github.wsure.bilibiliaudio.compat.NetMusicCompat;
 import com.github.wsure.bilibiliaudio.config.BiliConfig;
-import com.github.wsure.bilibiliaudio.resolver.BiliSongUrlResolverV15;
+import com.github.wsure.bilibiliaudio.adapter.v15.BiliSongUrlResolverV15;
 import net.minecraftforge.client.ConfigScreenHandler;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.common.MinecraftForge;

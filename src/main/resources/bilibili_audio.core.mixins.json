@@ -4,10 +4,7 @@
   "package": "com.github.wsure.bilibiliaudio.mixin",
   "compatibilityLevel": "JAVA_17",
   "client": [
-    "CDBurnerMenuScreenMixin",
-    "MusicPlayManagerMixin",
-    "ChunkedAudioStreamMixin",
-    "NetMusicSoundMixin"
+    "CDBurnerMenuScreenMixin"
   ],
   "injectors": {
     "defaultRequire": 0

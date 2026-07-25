@@ -1,6 +1,7 @@
-package com.github.wsure.bilibiliaudio.client;
+package com.github.wsure.bilibiliaudio.adapter.v15;
 
 import com.github.tartaricacid.netmusic.client.api.IAudioStreamHandler;
+import com.github.wsure.bilibiliaudio.client.BiliStreamCore;
 
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.UnsupportedAudioFileException;

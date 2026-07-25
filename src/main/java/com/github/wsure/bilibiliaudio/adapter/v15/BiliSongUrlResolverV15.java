@@ -1,7 +1,8 @@
-package com.github.wsure.bilibiliaudio.resolver;
+package com.github.wsure.bilibiliaudio.adapter.v15;
 
 import com.github.tartaricacid.netmusic.api.resolver.IAsyncSongUrlResolver;
 import com.github.tartaricacid.netmusic.item.ItemMusicCD;
+import com.github.wsure.bilibiliaudio.resolver.BiliResolveCore;
 
 import java.util.concurrent.CompletableFuture;
 

@@ -13,7 +13,10 @@ description = '''
 '''
 
 [[mixins]]
-config = "bilibili_audio.mixins.json"
+config = "bilibili_audio.core.mixins.json"
+
+[[mixins]]
+config = "bilibili_audio.v118.mixins.json"
 
 [[dependencies.bilibili_audio]]
 modId = "forge"

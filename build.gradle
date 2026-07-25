@@ -35,7 +35,7 @@ minecraft {
             property 'forge.logging.console.level', 'debug'
             property 'mixin.env.remapRefMap', 'true'
             property 'mixin.env.refMapRemappingFile', "${projectDir}/build/createSrgToMcp/output.srg"
-            args '-mixin.config', 'bilibili_audio.mixins.json'
+            args '-mixin.config', 'bilibili_audio.core.mixins.json', '-mixin.config', 'bilibili_audio.v118.mixins.json'
             mods {
                 bilibili_audio {
                     source sourceSets.main
@@ -48,7 +48,7 @@ minecraft {
             property 'forge.logging.console.level', 'debug'
             property 'mixin.env.remapRefMap', 'true'
             property 'mixin.env.refMapRemappingFile', "${projectDir}/build/createSrgToMcp/output.srg"
-            args '-mixin.config', 'bilibili_audio.mixins.json'
+            args '-mixin.config', 'bilibili_audio.core.mixins.json', '-mixin.config', 'bilibili_audio.v118.mixins.json'
             mods {
                 bilibili_audio {
                     source sourceSets.main
@@ -107,7 +107,7 @@ jar {
         attributes([
                 "Implementation-Title"  : project.name,
                 "Implementation-Version": "${version}",
-                "MixinConfigs"          : "bilibili_audio.mixins.json"
+                "MixinConfigs"          : "bilibili_audio.core.mixins.json,bilibili_audio.v118.mixins.json"
         ])
     }
 }

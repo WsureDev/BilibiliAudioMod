@@ -1,4 +1,4 @@
-package com.github.wsure.bilibiliaudio.mixin;
+package com.github.wsure.bilibiliaudio.adapter.v118;
 
 import com.github.tartaricacid.netmusic.client.audio.NetMusicSound;
 import com.github.wsure.bilibiliaudio.client.BiliAudioStreamAdapter;
