@@ -3,6 +3,7 @@ package com.github.wsure.bilibiliaudio.adapter.v118;
 import com.github.tartaricacid.netmusic.client.audio.MusicPlayManager;
 import com.github.tartaricacid.netmusic.item.ItemMusicCD;
 import com.github.wsure.bilibiliaudio.api.BiliClient;
+import com.github.wsure.bilibiliaudio.compat.NetMusicCompat;
 import com.github.wsure.bilibiliaudio.config.BiliConfig;
 import com.github.wsure.bilibiliaudio.resolver.BiliResolveCore;
 import net.minecraft.Util;
@@ -31,6 +32,10 @@ public class MusicPlayManagerMixin {
             return;
         }
         if (!url.startsWith(BiliConfig.BILI_SCHEME) && BiliClient.extractBvid(url) == null) {
+            return;
+        }
+        // 1.5.1+ 已通过 IAsyncSongUrlResolver 注册解析器，跳过避免双重解析
+        if (NetMusicCompat.hasResolverManager()) {
             return;
         }
         BiliConfig.LOGGER.info("[兼容] 拦截到 B 站 URL，异步解析: {}", url);
