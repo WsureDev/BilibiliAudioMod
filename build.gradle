@@ -19,7 +19,7 @@ apply plugin: 'eclipse'
 apply plugin: 'com.github.johnrengelman.shadow'
 apply plugin: 'java'
 
-version = '0.1.0-forge+mc1.20.1'
+version = '0.2.0-forge+mc1.20.1'
 group = 'com.github.wsure'
 archivesBaseName = 'bilibili_audio'
 

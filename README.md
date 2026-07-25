@@ -70,7 +70,7 @@ NetMusic 在 1.4.0 引入了 `AudioStreamHandlerManager`，在 1.5.0 引入了 `
 ./gradlew build
 ```
 
-产物：`build/libs/bilibili_audio-0.1.0-forge+mc1.20.1-all.jar`（含 relocated jaad）。
+产物：`build/libs/bilibili_audio-0.2.0-forge+mc1.20.1-all.jar`（含 relocated jaad）。
 
 > NetMusic 仅作为编译期依赖，**不打包**进本 mod。运行时需同时安装 NetMusic。
 
