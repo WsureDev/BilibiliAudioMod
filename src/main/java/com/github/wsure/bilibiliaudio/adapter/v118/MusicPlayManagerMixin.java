@@ -41,11 +41,10 @@ public class MusicPlayManagerMixin {
         BiliConfig.LOGGER.info("[兼容] 拦截到 B 站 URL，异步解析: {}", url);
         ci.cancel();
 
-        ItemMusicCD.SongInfo temp = new ItemMusicCD.SongInfo(url, "", 0, false);
+        ItemMusicCD.SongInfo temp = new ItemMusicCD.SongInfo(url, songName, 0, false);
         BiliResolveCore.resolve(temp).thenAccept(resolved -> {
             BiliConfig.LOGGER.info("[兼容] B 站 URL 已解析: {}", resolved.songUrl);
-            // 异步解析完成后，用 CDN 直链重新调用 play()
-            MusicPlayManager.play(resolved.songUrl, songName, sound);
+            MusicPlayManager.play(resolved.songUrl, resolved.songName, sound);
         });
     }
 }
