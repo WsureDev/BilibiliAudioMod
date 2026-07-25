@@ -1,12 +1,11 @@
 package com.github.wsure.bilibiliaudio;
 
-import com.github.tartaricacid.netmusic.api.resolver.MusicPlayResolverManager;
-import com.github.tartaricacid.netmusic.client.api.AudioStreamHandlerManager;
-import com.github.wsure.bilibiliaudio.client.BiliAudioStreamHandler;
+import com.github.wsure.bilibiliaudio.client.BiliAudioStreamHandlerV15;
 import com.github.wsure.bilibiliaudio.client.BiliLoginScreen;
 import com.github.wsure.bilibiliaudio.command.ModCommands;
+import com.github.wsure.bilibiliaudio.compat.NetMusicCompat;
 import com.github.wsure.bilibiliaudio.config.BiliConfig;
-import com.github.wsure.bilibiliaudio.resolver.BiliSongUrlResolver;
+import com.github.wsure.bilibiliaudio.resolver.BiliSongUrlResolverV15;
 import net.minecraftforge.client.ConfigScreenHandler;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.common.MinecraftForge;
@@ -24,7 +23,6 @@ public class BilibiliAudioMod {
         IEventBus modBus = FMLJavaModLoadingContext.get().getModEventBus();
         modBus.addListener(this::onCommonSetup);
         modBus.addListener(this::onClientSetup);
-        // RegisterCommandsEvent 是 Forge 总线事件（非 IModBusEvent），须注册到 Forge 事件总线
         MinecraftForge.EVENT_BUS.addListener(ModCommands::onRegister);
         BiliConfig.LOGGER.info("Bilibili Audio Player 初始化中（不新增物品，复用 NetMusic）");
     }
@@ -34,17 +32,23 @@ public class BilibiliAudioMod {
             BiliConfig.LOGGER.warn("NetMusic 未加载，本 mod 无复用目标，将不生效。请同时安装 NetMusic。");
             return;
         }
-        // 必须在 FMLLoadCompleteEvent（manager 冻结列表）之前注册
         event.enqueueWork(() -> {
-            MusicPlayResolverManager.registerResolver(new BiliSongUrlResolver());
             boolean hasCookie = Files.isRegularFile(BiliConfig.COOKIE_FILE);
-            BiliConfig.LOGGER.info("已注册 BiliSongUrlResolver；cookie 文件 {}",
-                    hasCookie ? "已存在，将走登录态解析" : "不存在，将走匿名 try_look 解析（多数视频可用）");
+
+            if (NetMusicCompat.hasResolverManager()) {
+                // 1.5.1+ 路径：注册 resolver
+                NetMusicCompat.registerResolver(new BiliSongUrlResolverV15());
+                BiliConfig.LOGGER.info("已注册 BiliSongUrlResolver（1.5.1 路径）；cookie 文件 {}",
+                        hasCookie ? "已存在" : "不存在");
+            } else {
+                // 1.1.8 路径：不注册 resolver，靠 NetMusicAudioStreamMixin 在客户端拦截
+                BiliConfig.LOGGER.info("NetMusic 1.1.8 模式：使用 Mixin 注入 NetMusicAudioStream；cookie 文件 {}",
+                        hasCookie ? "已存在" : "不存在");
+            }
         });
     }
 
     private void onClientSetup(FMLClientSetupEvent event) {
-        // 配置页（Mods 菜单「Config」按钮）：手动粘贴 Cookie，不依赖 NetMusic
         ModList.get().getModContainerById(BiliConfig.MOD_ID).ifPresent(c ->
                 c.registerExtensionPoint(ConfigScreenHandler.ConfigScreenFactory.class,
                         () -> new ConfigScreenHandler.ConfigScreenFactory(
@@ -55,8 +59,14 @@ public class BilibiliAudioMod {
             return;
         }
         event.enqueueWork(() -> {
-            AudioStreamHandlerManager.registerHandler(new BiliAudioStreamHandler());
-            BiliConfig.LOGGER.info("已注册 BiliAudioStreamHandler（客户端，处理 B 站音频 CDN 直链）");
+            if (NetMusicCompat.hasStreamHandlerManager()) {
+                // 1.5.1+ 路径：注册 stream handler
+                NetMusicCompat.registerStreamHandler(new BiliAudioStreamHandlerV15());
+                BiliConfig.LOGGER.info("已注册 BiliAudioStreamHandler（1.5.1 路径）");
+            } else {
+                // 1.1.8 路径：靠 NetMusicAudioStreamMixin 拦截
+                BiliConfig.LOGGER.info("NetMusic 1.1.8 模式：使用 Mixin 注入音频流");
+            }
         });
     }
 }
