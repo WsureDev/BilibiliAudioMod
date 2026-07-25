@@ -47,11 +47,27 @@ public final class BiliStreamCore {
 
     public static AudioInputStream handle(URL url) throws UnsupportedAudioFileException, IOException {
         AudioFileReader jaad = findJaadReader();
+
+        // 主路径：流式解码，边下载边播放，首帧延迟最小
+        if (jaad != null) {
+            try {
+                BufferedInputStream bis = openBuffered(url);
+                AudioInputStream in = jaad.getAudioInputStream(bis);
+                BiliConfig.LOGGER.info("jaad 流式解码就绪: {} Hz, {} bit, {} ch for {}",
+                        (int) in.getFormat().getSampleRate(), in.getFormat().getSampleSizeInBits(),
+                        in.getFormat().getChannels(), url.getHost());
+                return in;
+            } catch (UnsupportedAudioFileException | IOException e) {
+                BiliConfig.LOGGER.warn("jaad 流式解码失败 {}，回退全量下载: {}", url.getHost(), e.toString());
+            }
+        }
+
+        // fallback：全量下载到临时文件再解码（jaad 流式失败或无 jaad 时）
         if (jaad != null) {
             File tempFile = downloadToTemp(url);
             try {
                 AudioInputStream in = jaad.getAudioInputStream(tempFile);
-                BiliConfig.LOGGER.info("jaad 解码就绪: {} Hz, {} bit, {} ch for {}",
+                BiliConfig.LOGGER.info("jaad 全量解码就绪: {} Hz, {} bit, {} ch for {}",
                         (int) in.getFormat().getSampleRate(), in.getFormat().getSampleSizeInBits(),
                         in.getFormat().getChannels(), url.getHost());
                 final File tf = tempFile;
@@ -63,10 +79,12 @@ public final class BiliStreamCore {
                     }
                 };
             } catch (UnsupportedAudioFileException | IOException e) {
-                BiliConfig.LOGGER.warn("jaad RAF 解码失败 {}，回退流式: {}", url.getHost(), e.toString());
+                BiliConfig.LOGGER.warn("jaad 全量解码也失败 {}，回退 AudioSystem: {}", url.getHost(), e.toString());
                 deleteTempQuietly(tempFile);
             }
         }
+
+        // 最终 fallback：AudioSystem 流式
         return decodeStream(openBuffered(url), url);
     }
 

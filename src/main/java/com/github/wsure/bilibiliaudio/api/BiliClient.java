@@ -18,6 +18,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -347,12 +348,29 @@ public final class BiliClient {
     }
 
     /**
-     * 一站式解析：BV -> 视频标题 / 时长 / 音频直链。在调用前会尽量刷新 bili_ticket。
+     * 一站式解析：BV -> 视频标题 / 时长 / 音频直链。
+     * 并行化：ensureFreshTicket + ensureWbiKeys + getVideoData 三路并行，getAudioUrl 等三者完成后执行。
      */
     public BiliVideoInfo resolve(String bvid) throws IOException, InterruptedException {
-        ensureFreshTicket();
-        ensureWbiKeys();
-        JsonObject video = getVideoData(bvid);
+        // 三路并行：ticket 刷新 / wbi key 获取 / 视频信息获取（view 接口不需要 wbi 签名）
+        CompletableFuture<Void> ticketFuture = CompletableFuture.runAsync(() -> {
+            try { ensureFreshTicket(); } catch (Exception e) {
+                BiliConfig.LOGGER.warn("并行刷新 ticket 失败（不影响播放）: {}", e.getMessage());
+            }
+        });
+        CompletableFuture<Void> wbiFuture = CompletableFuture.runAsync(() -> {
+            try { ensureWbiKeys(); } catch (Exception e) {
+                BiliConfig.LOGGER.warn("并行获取 wbi key 失败: {}", e.getMessage());
+            }
+        });
+        CompletableFuture<JsonObject> videoFuture = CompletableFuture.supplyAsync(() -> {
+            try { return getVideoData(bvid); } catch (Exception e) {
+                throw new RuntimeException("获取视频信息失败: " + bvid, e);
+            }
+        });
+
+        CompletableFuture.allOf(ticketFuture, wbiFuture, videoFuture).join();
+        JsonObject video = videoFuture.join();
         String title = video.has("title") ? video.get("title").getAsString() : bvid;
         long cid = video.has("cid") ? video.get("cid").getAsLong() : 0;
         int duration = video.has("duration") ? video.get("duration").getAsInt() : 0;
