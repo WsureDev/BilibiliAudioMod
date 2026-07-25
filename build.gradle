@@ -9,12 +9,14 @@ buildscript {
     dependencies {
         classpath group: 'net.minecraftforge.gradle', name: 'ForgeGradle', version: '[6.0.16,6.2)', changing: true
         classpath 'org.parchmentmc:librarian:1.+'
+        classpath 'com.github.johnrengelman:shadow:8.1.1'
     }
 }
 
 apply plugin: 'net.minecraftforge.gradle'
 apply plugin: 'org.parchmentmc.librarian.forgegradle'
 apply plugin: 'eclipse'
+apply plugin: 'com.github.johnrengelman.shadow'
 apply plugin: 'java'
 
 version = '0.1.0-forge+mc1.20.1'
@@ -33,7 +35,7 @@ minecraft {
             property 'forge.logging.console.level', 'debug'
             property 'mixin.env.remapRefMap', 'true'
             property 'mixin.env.refMapRemappingFile', "${projectDir}/build/createSrgToMcp/output.srg"
-            args '-mixin.config', 'bilibili_audio.mixins.json'
+            args '-mixin.config', 'bilibili_audio.core.mixins.json', '-mixin.config', 'bilibili_audio.v118.mixins.json'
             mods {
                 bilibili_audio {
                     source sourceSets.main
@@ -46,7 +48,7 @@ minecraft {
             property 'forge.logging.console.level', 'debug'
             property 'mixin.env.remapRefMap', 'true'
             property 'mixin.env.refMapRemappingFile', "${projectDir}/build/createSrgToMcp/output.srg"
-            args '-mixin.config', 'bilibili_audio.mixins.json'
+            args '-mixin.config', 'bilibili_audio.core.mixins.json', '-mixin.config', 'bilibili_audio.v118.mixins.json'
             mods {
                 bilibili_audio {
                     source sourceSets.main
@@ -67,16 +69,20 @@ repositories {
 dependencies {
     minecraft 'net.minecraftforge:forge:1.20.1-47.1.0'
 
-    // NetMusic：其 jar 任务产物已被 ForgeGradle 6 自动 reobf 为 SRG(生产) 映射，
-    // 直接在 dev(parchment) 环境加载会 NoSuchFieldError(f_279569_)。用 fg.deobf 还原为 dev 映射。
-    // 仅 dev 编译/运行时依赖，不打包进本 mod（用户运行时单独安装 NetMusic）。
+    // NetMusic dev 编译/运行时依赖
+    // 测试 1.5.1 时: implementation fg.deobf("netmusic:netmusic:1.5.1-forge+mc1.20.1")
+    // 测试 1.1.8 时: implementation fg.deobf("netmusic:netmusic:1.1.8-forge+mc1.20.1")
+    // 当前: 1.5.1
+    compileOnly files("libs/netmusic-1.5.1-forge+mc1.20.1.jar")
     implementation fg.deobf("netmusic:netmusic:1.5.1-forge+mc1.20.1")
 
-    // AAC 解码库：提供 .m4s (fragmented MP4 / AAC) 的 javax.sound SPI
-    // 生产环境由 NetMusic 的 shadow jar (relocated jaad) 提供，此处仅供 dev 测试
+    // mp3spi / jflac 仅供 dev 测试（生产环境由 NetMusic shadow jar 提供）
     minecraftLibrary 'com.googlecode.soundlibs:mp3spi:1.9.5.4'
-    minecraftLibrary 'libs:javasound-aac:0.9.6'
     minecraftLibrary 'libs:jflac-codec-1.5.3:SNAPSHOT'
+
+    // jaad (AAC 解码)：dev 测试用 minecraftLibrary 直接放 classpath
+    // 生产环境由本 mod 的 shadow jar 打包并提供（relocated 到 com.github.wsure.bilibiliaudio.libs.jaad）
+    minecraftLibrary 'libs:javasound-aac:0.9.6'
 
     // Mixin annotation processor（Forge 内置 Mixin，只需 AP 生成 refmap）
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
@@ -100,7 +106,33 @@ jar {
         attributes([
                 "Implementation-Title"  : project.name,
                 "Implementation-Version": "${version}",
-                "MixinConfigs"          : "bilibili_audio.mixins.json"
+                "MixinConfigs"          : "bilibili_audio.core.mixins.json,bilibili_audio.v118.mixins.json"
         ])
     }
 }
+
+// shadow: 把 jaad (AAC 解码) 打包进本 mod，并 relocate 到自己的包名，
+// 避免与 NetMusic 1.5.1 的 relocate 路径冲突；保证 1.1.8 生产环境也能解码 B 站 MP4/AAC。
+shadowJar {
+    // 只保留本 mod 自身 + jaad，排除 NetMusic（用户单独安装）和 MC/Forge
+    dependencies {
+        include(dependency("libs:javasound-aac:0.9.6"))
+    }
+
+    // 排除 NetMusic 的类和 SPI 声明（由用户安装的 NetMusic jar 提供）
+    exclude 'com/github/tartaricacid/**'
+
+    relocate 'net.sourceforge.jaad', 'com.github.wsure.bilibiliaudio.libs.jaad'
+
+    // 合并 javax.sound SPI 服务文件，让 AACAudioFileReader 被注册
+    mergeServiceFiles()
+
+    exclude 'META-INF/maven/**/*'
+    exclude 'META-INF/LICENSE'
+}
+
+reobf {
+    shadowJar {}
+}
+
+tasks.build.dependsOn reobfShadowJar

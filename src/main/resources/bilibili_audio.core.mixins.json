@@ -7,7 +7,7 @@
     "CDBurnerMenuScreenMixin"
   ],
   "injectors": {
-    "defaultRequire": 1
+    "defaultRequire": 0
   },
   "refmap": "bilibili_audio.refmap.json"
 }

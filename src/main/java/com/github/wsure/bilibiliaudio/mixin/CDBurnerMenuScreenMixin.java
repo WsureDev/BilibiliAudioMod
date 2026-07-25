@@ -35,7 +35,7 @@ public class CDBurnerMenuScreenMixin {
     @Shadow
     private Component tips;
 
-    @Inject(method = "handleCraftButton", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "handleCraftButton", at = @At("HEAD"), cancellable = true, require = 1)
     private void bilibili_audio$handleBv(CallbackInfo ci) {
         String input = textField.getValue();
         if (input == null || input.isEmpty()) {
