@@ -2,54 +2,57 @@
 
 在 [NetMusic](https://github.com/TartaricAcid/NetMusic) 的基础上，让音乐 CD 支持播放 **B 站 BV 号**音频。
 
-**不新增任何物品**，完全复用 NetMusic 的音乐 CD / 唱片机方块，仅通过 NetMusic 的两个扩展点接入：
+**不新增任何物品**，完全复用 NetMusic 的音乐 CD / 唱片机方块。
 
-| 扩展点 | 侧 | 本 mod 实现 | 作用 |
-| --- | --- | --- | --- |
-| `IAsyncSongUrlResolver` | 服务端 | `BiliSongUrlResolver` | 把 CD 里的 `bilibili://BVxxxx` 标识异步解析为音频直链 |
-| `IAudioStreamHandler` | 客户端 | `BiliAudioStreamHandler` | 带 Referer 拉取 B 站 CDN 直链并解码（fragmented MP4 / AAC） |
+## 兼容范围
 
-## 工作流程
+一个 jar 包同时兼容以下 NetMusic 版本（Forge 1.20.1）：
 
-1. `/bilicd <BV 号或视频链接>` —— 服务端异步获取视频信息，生成一张 `songUrl = bilibili://BVxxxx` 的音乐 CD（复用 NetMusic `music_cd`）。
-2. 把 CD 放入唱片机（右键 / 红石触发），NetMusic 调用 `MusicPlayResolverManager.resolve()`。
-3. `BiliSongUrlResolver` 命中 `bilibili://` 标识，调用 B 站 `view` + `wbi/playurl`（fnval=4048）拿到 AAC 音频直链，写回 `SongInfo.songUrl`。
-4. 服务端把直链通过网络包下发客户端；客户端 `AudioStreamHandlerManager` 选中 `BiliAudioStreamHandler`（带 Referer 绕防盗链）解码播放。
+| NetMusic 版本 | 适配方式 | 状态 |
+| --- | --- | --- |
+| 1.1.8 ~ 1.3.1 | Mixin 注入 | ✓ 已测试 |
+| 1.4.0 | — | ✗ 不支持 |
+| 1.5.0 ~ 1.5.1 | 原生 API 注册 | ✓ 已测试 |
 
-## Cookie（可选但推荐）
+### 双版本兼容原理
 
-- **无 cookie**：走匿名 `try_look=1`，多数视频可播（低清音轨）。
-- **有 cookie**：登录态，可播 VIP / 高码率内容，并自动刷新 `bili_ticket`。
+NetMusic 在 1.4.0 引入了 `AudioStreamHandlerManager`，在 1.5.0 引入了 `IAsyncSongUrlResolver`。本 mod 在启动时检测这两个类是否存在，自动选择适配路径：
 
-放置 cookie：把 PoC 产出的 `.bili_cookie`（cookie 头字符串）复制到：
+**1.1.8 ~ 1.3.1（Mixin 路径）**：
+- `MusicPlayManagerMixin` 拦截 `play()`，把 `bilibili://BVxxxx` 异步解析为 CDN 直链
+- `NetMusicSoundMixin` 拦截 `getStream()`，用 jaad 解码 MP4/AAC
+- `ChunkedAudioStreamMixin` 给 B 站 CDN 请求加 Referer 头
+- mod 自带 relocated jaad 库（1.1.8 的 NetMusic jar 不含 AAC 解码器）
+
+**1.5.0 ~ 1.5.1（API 路径）**：
+- 注册 `BiliSongUrlResolverV15`（`IAsyncSongUrlResolver`）做 BV 号解析
+- 注册 `BiliAudioStreamHandlerV15`（`IAudioStreamHandler`）做音频流解码
+- Mixin 通过 `hasStreamHandlerManager()` / `hasResolverManager()` 守卫自动跳过
+
+## 用法
+
+### 1. 安装
+
+将本 mod 和 NetMusic 同时放入 `mods` 文件夹。无需额外安装 jaad 库——本 mod 已自带。
+
+### 2. 设置 Cookie（可选但推荐）
+
+- **无 cookie**：走匿名 `try_look=1`，多数视频可播（低清音轨）
+- **有 cookie**：登录态，可播 VIP / 高码率内容，自动刷新 `bili_ticket`
+
+把 cookie 头字符串写入：
 
 ```
 <游戏目录>/config/bilibili_audio/bili_cookie.txt
 ```
 
-例如 dev 运行时为 `BilibiliAudioMod/run/config/bilibili_audio/bili_cookie.txt`。文件权限建议 `0600`。
+也可在游戏内 **Mods 菜单 -> Bilibili Audio -> Config** 界面粘贴 cookie。
 
-> in-mod 扫码登录（`/bililogin`）暂未实现，目前沿用 PoC 的 cookie 文件。
+### 3. 制作 B 站唱片
 
-## 构建
+**CD 刻录机**：在 NetMusic 的 CD 刻录机界面输入 BV 号或视频链接，点击刻录。
 
-```bash
-./gradlew build
-```
-
-产物：`build/libs/bilibili_audio-0.1.0-forge+mc1.20.1.jar`。
-
-> NetMusic 仅作为编译期依赖（`libs/netmusic-1.5.1-forge+mc1.20.1.jar`），**不打包**进本 mod。运行时需同时安装 NetMusic（其 shadow jar 自带 relocated `javasound-aac`，提供 `.m4s` 解码 SPI）。
-
-## dev 运行
-
-```bash
-./gradlew runClient
-```
-
-dev 环境下，`build.gradle` 通过 `minecraftLibrary` 额外引入 `javasound-aac`，以便本地测试 B 站音频解码。
-
-## 命令
+**命令**：
 
 ```
 /bilicd <BV1xxxx | https://www.bilibili.com/video/BV1xxxx>
@@ -57,10 +60,44 @@ dev 环境下，`build.gradle` 通过 `minecraftLibrary` 额外引入 `javasound
 
 权限等级 2（OP）。成功后获得一张以视频标题命名的音乐 CD。
 
-## 关键文件
+### 4. 播放
 
-- `api/BiliClient.java` —— B 站 HTTP 客户端（cookie / WBI 签名 / bili_ticket 刷新 / view / playurl），移植自 `bili_audio_poc.py`
-- `api/WbiSigner.java` —— WBI 签名（mixin key 推导 + MD5）
-- `resolver/BiliSongUrlResolver.java` —— 服务端解析器
-- `client/BiliAudioStreamHandler.java` —— 客户端音频流处理器
-- `command/ModCommands.java` —— `/bilicd` 命令
+把 CD 放入唱片机（右键 / 红石触发），即可播放。
+
+## 构建
+
+```bash
+./gradlew build
+```
+
+产物：`build/libs/bilibili_audio-0.1.0-forge+mc1.20.1-all.jar`（含 relocated jaad）。
+
+> NetMusic 仅作为编译期依赖，**不打包**进本 mod。运行时需同时安装 NetMusic。
+
+## 代码结构
+
+```
+com.github.wsure.bilibiliaudio/
+├── api/              # B 站 HTTP 客户端、WBI 签名、视频信息
+├── config/           # 常量、日志、cookie 路径
+├── command/          # /bilicd 命令
+├── client/
+│   ├── BiliStreamCore.java          # jaad 解码核心（两版本共用）
+│   ├── BiliAudioStreamAdapter.java  # AudioStream 适配器（1.1.8 路径用）
+│   └── BiliLoginScreen.java         # 配置页
+├── resolver/
+│   └── BiliResolveCore.java         # BV 号解析核心（两版本共用）
+├── compat/
+│   └── NetMusicCompat.java          # 版本检测 + 反射注册
+├── mixin/
+│   └── CDBurnerMenuScreenMixin.java # CD 刻录机拦截（两版本共用）
+├── adapter/
+│   ├── v118/                        # 1.1.8~1.3.1 专属 Mixin
+│   │   ├── MusicPlayManagerMixin.java
+│   │   ├── NetMusicSoundMixin.java
+│   │   └── ChunkedAudioStreamMixin.java
+│   └── v15/                         # 1.5.0~1.5.1 接口实现
+│       ├── BiliAudioStreamHandlerV15.java
+│       └── BiliSongUrlResolverV15.java
+└── BilibiliAudioMod.java            # 入口：按版本检测走不同注册路径
+```
