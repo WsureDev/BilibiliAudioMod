@@ -43,6 +43,9 @@ public final class BiliResolveCore {
                 if (info.getDurationSec() > 0) {
                     songInfo.songTime = info.getDurationSec();
                 }
+                if (!BiliClient.getInstance().isLogin() && songInfo.songName != null) {
+                    songInfo.songName = "§e[匿名]§r " + songInfo.songName;
+                }
                 CdnUrlCache.put(info.getAudioUrl(), info.getBackupAudioUrls());
                 BiliConfig.LOGGER.info("已解析 B 站音频: {} [{}] -> {} ({} 个 CDN 节点)", bvid,
                         BiliClient.getInstance().isLogin() ? "登录态" : "匿名 try_look",
