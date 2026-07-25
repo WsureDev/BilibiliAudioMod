@@ -69,13 +69,12 @@ repositories {
 dependencies {
     minecraft 'net.minecraftforge:forge:1.20.1-47.1.0'
 
-    // NetMusic 1.5.1：仅编译期依赖（提供 IAsyncSongUrlResolver / IAudioStreamHandler 接口）
-    // V15 兼容类实现这些接口，运行时按版本检测走反射，1.1.8 下不会加载
+    // NetMusic dev 编译/运行时依赖
+    // 测试 1.5.1 时: implementation fg.deobf("netmusic:netmusic:1.5.1-forge+mc1.20.1")
+    // 测试 1.1.8 时: implementation fg.deobf("netmusic:netmusic:1.1.8-forge+mc1.20.1")
+    // 当前: 1.5.1
     compileOnly files("libs/netmusic-1.5.1-forge+mc1.20.1.jar")
-
-    // NetMusic 1.1.8：dev 运行时依赖，用 fg.deobf 还原为 dev 映射
-    // 切换测试 1.5.1 时改为 implementation fg.deobf("netmusic:netmusic:1.5.1-forge+mc1.20.1")
-    implementation fg.deobf("netmusic:netmusic:1.1.8-forge+mc1.20.1")
+    implementation fg.deobf("netmusic:netmusic:1.5.1-forge+mc1.20.1")
 
     // mp3spi / jflac 仅供 dev 测试（生产环境由 NetMusic shadow jar 提供）
     minecraftLibrary 'com.googlecode.soundlibs:mp3spi:1.9.5.4'
