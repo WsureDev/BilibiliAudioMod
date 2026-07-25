@@ -1,0 +1,38 @@
+modLoader = "javafml"
+loaderVersion = "[46,)"
+license = "MIT"
+
+[[mods]]
+modId = "bilibili_audio"
+version = "${mod_version}"
+displayName = "Bilibili Audio Player"
+authors = "wsure"
+description = '''
+在 NetMusic 的基础上，让音乐 CD 支持播放 B 站 BV 号音频。
+不新增任何物品，完全复用 NetMusic 的音乐 CD / 唱片机。
+'''
+
+[[mixins]]
+config = "bilibili_audio.mixins.json"
+
+[[dependencies.bilibili_audio]]
+modId = "forge"
+mandatory = true
+versionRange = "[46,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.bilibili_audio]]
+modId = "minecraft"
+mandatory = true
+versionRange = "[1.20,1.20.2)"
+ordering = "NONE"
+side = "BOTH"
+
+# 软依赖 NetMusic：必须存在本 mod 才有意义，但 Forge 仍允许其缺席加载
+[[dependencies.bilibili_audio]]
+modId = "netmusic"
+mandatory = false
+versionRange = "[1.5.1,)"
+ordering = "AFTER"
+side = "BOTH"

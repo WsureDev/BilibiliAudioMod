@@ -1,0 +1,106 @@
+buildscript {
+    repositories {
+        maven { url = 'https://maven.minecraftforge.net' }
+        maven { url = 'https://maven.parchmentmc.org' }
+        maven { url = 'https://repo.spongepowered.org/repository/maven-public/' }
+        mavenCentral()
+        gradlePluginPortal()
+    }
+    dependencies {
+        classpath group: 'net.minecraftforge.gradle', name: 'ForgeGradle', version: '[6.0.16,6.2)', changing: true
+        classpath 'org.parchmentmc:librarian:1.+'
+    }
+}
+
+apply plugin: 'net.minecraftforge.gradle'
+apply plugin: 'org.parchmentmc.librarian.forgegradle'
+apply plugin: 'eclipse'
+apply plugin: 'java'
+
+version = '0.1.0-forge+mc1.20.1'
+group = 'com.github.wsure'
+archivesBaseName = 'bilibili_audio'
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+
+minecraft {
+    mappings channel: 'parchment', version: '2023.08.20-1.20.1'
+
+    runs {
+        client {
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+            property 'mixin.env.remapRefMap', 'true'
+            property 'mixin.env.refMapRemappingFile', "${projectDir}/build/createSrgToMcp/output.srg"
+            args '-mixin.config', 'bilibili_audio.mixins.json'
+            mods {
+                bilibili_audio {
+                    source sourceSets.main
+                }
+            }
+        }
+        server {
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+            property 'mixin.env.remapRefMap', 'true'
+            property 'mixin.env.refMapRemappingFile', "${projectDir}/build/createSrgToMcp/output.srg"
+            args '-mixin.config', 'bilibili_audio.mixins.json'
+            mods {
+                bilibili_audio {
+                    source sourceSets.main
+                }
+            }
+        }
+    }
+}
+
+repositories {
+    flatDir {
+        dir "libs"
+    }
+    mavenCentral()
+    maven { url = 'https://repo.spongepowered.org/repository/maven-public/' }
+}
+
+dependencies {
+    minecraft 'net.minecraftforge:forge:1.20.1-47.1.0'
+
+    // NetMusic：其 jar 任务产物已被 ForgeGradle 6 自动 reobf 为 SRG(生产) 映射，
+    // 直接在 dev(parchment) 环境加载会 NoSuchFieldError(f_279569_)。用 fg.deobf 还原为 dev 映射。
+    // 仅 dev 编译/运行时依赖，不打包进本 mod（用户运行时单独安装 NetMusic）。
+    implementation fg.deobf("netmusic:netmusic:1.5.1-forge+mc1.20.1")
+
+    // AAC 解码库：提供 .m4s (fragmented MP4 / AAC) 的 javax.sound SPI
+    // 生产环境由 NetMusic 的 shadow jar (relocated jaad) 提供，此处仅供 dev 测试
+    minecraftLibrary 'com.googlecode.soundlibs:mp3spi:1.9.5.4'
+    minecraftLibrary 'libs:javasound-aac:0.9.6'
+    minecraftLibrary 'libs:jflac-codec-1.5.3:SNAPSHOT'
+
+    // Mixin annotation processor（Forge 内置 Mixin，只需 AP 生成 refmap）
+    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
+}
+
+tasks.named('processResources', ProcessResources).configure {
+    var replaceProperties = [mod_version: version]
+    inputs.properties replaceProperties
+    filesMatching(['META-INF/mods.toml']) {
+        expand replaceProperties + [project: project]
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.annotationProcessorPath = configurations.annotationProcessor
+}
+
+jar {
+    manifest {
+        attributes([
+                "Implementation-Title"  : project.name,
+                "Implementation-Version": "${version}",
+                "MixinConfigs"          : "bilibili_audio.mixins.json"
+        ])
+    }
+}
